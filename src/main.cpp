@@ -1,7 +1,8 @@
 #include <Arduino.h>
 #include "esp_camera.h"
+#include <WiFi.h>
+#include "credentials.h"
 
-// XIAO ESP32-S3 Sense camera pins
 #define PWDN_GPIO_NUM  -1
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM  10
@@ -19,10 +20,9 @@
 #define HREF_GPIO_NUM  47
 #define PCLK_GPIO_NUM  13
 
-void setup() {
-  Serial.begin(115200);
-  delay(1000);
+WiFiServer server(80);
 
+bool initCamera() {
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer   = LEDC_TIMER_0;
@@ -44,25 +44,64 @@ void setup() {
   config.pin_reset    = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size   = FRAMESIZE_QVGA;
-  config.jpeg_quality = 12;
-  config.fb_count     = 1;
+  config.frame_size   = FRAMESIZE_VGA;
+  config.jpeg_quality = 10;
+  config.fb_count     = 2;
 
-  esp_err_t err = esp_camera_init(&config);
-  if (err != ESP_OK) {
-    Serial.printf("Camera init FAILED: 0x%x\n", err);
+  return esp_camera_init(&config) == ESP_OK;
+}
+
+void streamToClient(WiFiClient client) {
+  while (client.available()) client.read();
+
+  client.print(
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n"
+    "Connection: keep-alive\r\n\r\n"
+  );
+
+  while (client.connected()) {
+    camera_fb_t *fb = esp_camera_fb_get();
+    if (!fb) break;
+
+    client.printf(
+      "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+      fb->len
+    );
+    client.write(fb->buf, fb->len);
+    client.print("\r\n");
+
+    esp_camera_fb_return(fb);
+  }
+
+  client.stop();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!initCamera()) {
+    Serial.println("Camera init FAILED");
     return;
   }
-  Serial.println("Camera init OK");
+  Serial.println("Camera OK");
+
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  Serial.print("Connecting");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.printf("\nIP: http://%s\n", WiFi.localIP().toString().c_str());
+
+  server.begin();
 }
 
 void loop() {
-  camera_fb_t *fb = esp_camera_fb_get();
-  if (!fb) {
-    Serial.println("Capture FAILED");
-  } else {
-    Serial.printf("Captured: %dx%d, %u bytes\n", fb->width, fb->height, fb->len);
-    esp_camera_fb_return(fb);
+  WiFiClient client = server.available();
+  if (client) {
+    Serial.println("Client connected");
+    streamToClient(client);
+    Serial.println("Client disconnected");
   }
-  delay(2000);
 }
