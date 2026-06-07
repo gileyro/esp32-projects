@@ -1,0 +1,14 @@
+name: led_control_app
+description: Zdalne sterowanie diodą LED na ESP32 przez MQTT.
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  mqtt_client: ^10.3.0
+
+flutter:
+  uses-material-design: true
