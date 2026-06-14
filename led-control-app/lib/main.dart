@@ -1,9 +1,9 @@
 // Aplikacja Flutter (Android): zdalne sterowanie LED-em na ESP32 przez MQTT.
 // Łączy się z brokerem MQTT (broker.hivemq.com), wyświetla animowaną żarówkę
-// i przycisk Włącz/Wyłącz, który wysyła ON/OFF na topic esp32/led/command.
-// Stan UI synchronizowany jest z esp32/led/state. Kropka w AppBar pokazuje status połączenia.
+// i przycisk Włącz/Wyłącz, który wysyła ON/OFF na topic mgil/esp32c3/led/command.
+// Stan UI synchronizowany jest z mgil/esp32c3/led/state. Kropka w AppBar pokazuje status połączenia.
 // Po utracie połączenia automatycznie ponawia próbę co 5 sekund.
-// Wersja: 2026-06-14 16:32
+// Wersja: 2026-06-14 19:29
 
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
@@ -11,8 +11,8 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 
 const String mqttBroker = 'broker.hivemq.com';
 const int mqttPort = 1883;
-const String topicCmd = 'esp32/led/command';
-const String topicState = 'esp32/led/state';
+const String topicCmd = 'mgil/esp32c3/led/command';
+const String topicState = 'mgil/esp32c3/led/state';
 
 void main() => runApp(const LedApp());
 
