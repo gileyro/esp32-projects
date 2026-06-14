@@ -1,3 +1,8 @@
+// Firmware ESP32-S3: serwer MJPEG stream z kamery OV2640.
+// Inicjalizuje kamerę (JPEG, VGA) i uruchamia serwer HTTP na porcie 80.
+// Dla każdego klienta streamuje obraz jako multipart HTTP (MJPEG) klatka po klatce,
+// dopóki klient pozostaje połączony. IP serwera wypisuje na Serial po połączeniu z WiFi.
+
 #include <Arduino.h>
 #include "esp_camera.h"
 #include <WiFi.h>
