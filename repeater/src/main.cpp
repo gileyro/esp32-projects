@@ -14,13 +14,28 @@
 //   - NAT przekazuje ruch dalej w kierunku routera
 //   - Urządzenia końcowe łączą się do dowolnego węzła relay
 //
-// Wersja: 2026-06-14 20:04
+// Każdy węzeł serwuje HTTP GET /mesh-info zwracające jego ID i rolę.
+// Aplikacja Flutter odpytuje gateway IP i wyświetla ID węzła.
+// Wersja: 2026-06-14 20:11
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WebServer.h>
 #include <esp_wifi.h>
 #include "lwip/lwip_napt.h"
 #include "config.h"
+
+WebServer httpServer(80);
+String nodeId;
+
+// ID węzła: ostatnie 4 znaki MAC w hex (np. "A3F2")
+static String buildNodeId() {
+    uint8_t mac[6];
+    esp_wifi_get_mac(WIFI_IF_AP, mac);
+    char buf[5];
+    snprintf(buf, sizeof(buf), "%02X%02X", mac[4], mac[5]);
+    return String(buf);
+}
 
 // Unikalny trzeci oktet podsieci AP wyprowadzony z MAC (zakres 10–209)
 static uint8_t apSubnet() {
@@ -37,10 +52,19 @@ static void startAP() {
     WiFi.softAPConfig(apIP, apIP, apMask);
     WiFi.softAP(MESH_SSID, MESH_PASSWORD);
 
-    // Włącz NAT — ruch z AP trafi przez STA do upstream
     ip_napt_enable(apIP, 1);
 
-    Serial.printf("AP: %s  IP: %s\n", MESH_SSID, apIP.toString().c_str());
+    Serial.printf("AP: %s  IP: %s  NodeID: %s\n",
+                  MESH_SSID, apIP.toString().c_str(), nodeId.c_str());
+}
+
+static void startHttpServer() {
+    httpServer.on("/mesh-info", HTTP_GET, []() {
+        String json = "{\"id\":\"" + nodeId + "\","
+                      "\"role\":\"" + String(IS_ROOT ? "root" : "relay") + "\"}";
+        httpServer.send(200, "application/json", json);
+    });
+    httpServer.begin();
 }
 
 static void connectRoot() {
@@ -56,7 +80,6 @@ static void connectRoot() {
 static void connectRelay() {
     Serial.println("RELAY: skanowanie sieci mesh...");
 
-    // Szukaj MESH_SSID z najsilniejszym sygnałem (RSSI)
     int best = -100, bestIdx = -1;
     int n = WiFi.scanNetworks();
     for (int i = 0; i < n; i++) {
@@ -95,6 +118,9 @@ void setup() {
     Serial.begin(115200);
     WiFi.mode(WIFI_AP_STA);
 
+    nodeId = buildNodeId();
+    Serial.printf("Node ID: %s\n", nodeId.c_str());
+
 #if IS_ROOT
     connectRoot();
 #else
@@ -102,11 +128,13 @@ void setup() {
 #endif
 
     startAP();
+    startHttpServer();
     Serial.println("Węzeł gotowy.");
 }
 
 void loop() {
-    // Automatyczne ponowne połączenie STA po zerwaniu
+    httpServer.handleClient();
+
     if (WiFi.status() != WL_CONNECTED) {
         Serial.println("Połączenie utracone, ponawiam...");
 #if IS_ROOT

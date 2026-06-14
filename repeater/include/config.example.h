@@ -1,5 +1,5 @@
 #pragma once
-// Wersja: 2026-06-14 20:04
+// Wersja: 2026-06-14 20:11
 
 // ── Sieć mesh (wspólna dla wszystkich węzłów) ──────────────────────────────
 // Urządzenia końcowe (telefon, laptop) łączą się do tej sieci na dowolnym węźle.

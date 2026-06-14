@@ -3,11 +3,16 @@
 // i przycisk Włącz/Wyłącz, który wysyła ON/OFF na topic mgil/esp32c3/led/command.
 // Stan UI synchronizowany jest z mgil/esp32c3/led/state. Kropka w AppBar pokazuje status połączenia.
 // Po utracie połączenia automatycznie ponawia próbę co 5 sekund.
-// Wersja: 2026-06-14 19:29
+// Jeśli telefon jest podłączony do węzła mesh ESP32, wyświetla jego ID.
+// Wersja: 2026-06-14 20:11
 
+import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:network_info_plus/network_info_plus.dart';
+import 'package:http/http.dart' as http;
 
 const String mqttBroker = 'broker.hivemq.com';
 const int mqttPort = 1883;
@@ -43,11 +48,36 @@ class _LedPageState extends State<LedPage> {
   bool _connected = false;
   bool _disposed = false;
   String _status = 'Łączenie...';
+  String? _meshNodeId; // ID węzła mesh lub null jeśli brak
+  Timer? _nodeCheckTimer;
 
   @override
   void initState() {
     super.initState();
     _connect();
+    _checkMeshNode();
+    // Sprawdzaj co 30s — węzeł może się zmienić przy roamingu
+    _nodeCheckTimer = Timer.periodic(const Duration(seconds: 30), (_) => _checkMeshNode());
+  }
+
+  Future<void> _checkMeshNode() async {
+    try {
+      final gateway = await NetworkInfo().getWifiGatewayIP();
+      if (gateway == null || _disposed) return;
+
+      final response = await http
+          .get(Uri.parse('http://$gateway/mesh-info'))
+          .timeout(const Duration(seconds: 3));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) setState(() => _meshNodeId = data['id'] as String?);
+      } else {
+        if (mounted) setState(() => _meshNodeId = null);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _meshNodeId = null);
+    }
   }
 
   Future<void> _connect() async {
@@ -80,11 +110,13 @@ class _LedPageState extends State<LedPage> {
     _client.updates?.listen(_onData);
   }
 
-  void _onConnected() =>
-      setState(() {
-        _connected = true;
-        _status = 'Połączono z $mqttBroker';
-      });
+  void _onConnected() {
+    setState(() {
+      _connected = true;
+      _status = 'Połączono z $mqttBroker';
+    });
+    _checkMeshNode();
+  }
 
   void _onDisconnected() {
     if (_disposed) return;
@@ -114,6 +146,7 @@ class _LedPageState extends State<LedPage> {
   @override
   void dispose() {
     _disposed = true;
+    _nodeCheckTimer?.cancel();
     _client.disconnect();
     super.dispose();
   }
@@ -172,6 +205,20 @@ class _LedPageState extends State<LedPage> {
                 fontSize: 13,
               ),
             ),
+            if (_meshNodeId != null) ...[
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.router, size: 14, color: Colors.blueAccent),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Węzeł mesh: $_meshNodeId',
+                    style: const TextStyle(fontSize: 12, color: Colors.blueAccent),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
