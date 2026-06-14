@@ -3,7 +3,7 @@
 // włącza/wyłącza LED i publikuje aktualny stan na mgil/esp32c3/led/state (retain).
 // Połączenie WiFi i MQTT jest automatycznie odtwarzane po zerwaniu.
 // Publikuje status online/offline przez MQTT LWT na topic mgil/esp32c3/led/status.
-// Wersja: 2026-06-14 23:55
+// Wersja: 2026-06-15 00:20
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -35,9 +35,22 @@ void onMessage(char* topic, byte* payload, unsigned int len) {
 
 void connectWifi() {
     if (WiFi.status() == WL_CONNECTED) return;
-    WiFi.disconnect();
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("WiFi");
+    // Czekamy 10s na autoReconnect zanim wymuśimy pełny restart
+    unsigned long t = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - t < 10000) {
+        delay(500);
+        Serial.print(".");
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println(" OK (auto) — " + WiFi.localIP().toString());
+        return;
+    }
+    // AutoReconnect nie zadziałał — pełny restart stosu WiFi
+    Serial.println(" timeout, restart WiFi...");
+    WiFi.disconnect(true);
+    delay(1000);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
@@ -67,6 +80,8 @@ void setup() {
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, LOW);
 
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(true);
     connectWifi();
     mqtt.setServer(MQTT_BROKER, MQTT_PORT);
     mqtt.setCallback(onMessage);
