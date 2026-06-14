@@ -1,8 +1,8 @@
 // Firmware Seeed XIAO ESP32-C3: sterowanie zewnętrzną diodą LED przez MQTT.
 // Łączy się z WiFi i brokerem MQTT, nasłuchuje komend ON/OFF na topic mgil/esp32c3/led/command,
 // włącza/wyłącza LED i publikuje aktualny stan na mgil/esp32c3/led/state (retain).
-// Połączenie MQTT jest automatycznie odtwarzane po zerwaniu.
-// Wersja: 2026-06-14 19:29
+// Połączenie WiFi i MQTT jest automatycznie odtwarzane po zerwaniu.
+// Wersja: 2026-06-14 23:55
 
 #include <Arduino.h>
 #include <WiFi.h>
@@ -33,6 +33,8 @@ void onMessage(char* topic, byte* payload, unsigned int len) {
 }
 
 void connectWifi() {
+    if (WiFi.status() == WL_CONNECTED) return;
+    WiFi.disconnect();
     WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
     Serial.print("WiFi");
     while (WiFi.status() != WL_CONNECTED) {
@@ -68,6 +70,11 @@ void setup() {
 }
 
 void loop() {
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("WiFi utracone, ponawiam...");
+        mqtt.disconnect();
+        connectWifi();
+    }
     if (!mqtt.connected()) connectMqtt();
     mqtt.loop();
 }
