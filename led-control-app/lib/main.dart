@@ -4,7 +4,8 @@
 // Stan UI synchronizowany jest z mgil/esp32c3/led/state. Kropka w AppBar pokazuje status połączenia.
 // Po utracie połączenia automatycznie ponawia próbę co 5 sekund.
 // Jeśli telefon jest podłączony do węzła mesh ESP32, wyświetla jego ID.
-// Wersja: 2026-06-14 20:11
+// Pokazuje status połączenia z android-switch (online/offline przez MQTT LWT).
+// Wersja: 2026-06-14 21:12
 
 import 'dart:async';
 import 'dart:convert';
@@ -18,6 +19,7 @@ const String mqttBroker = 'broker.hivemq.com';
 const int mqttPort = 1883;
 const String topicCmd = 'mgil/esp32c3/led/command';
 const String topicState = 'mgil/esp32c3/led/state';
+const String topicStatus = 'mgil/esp32c3/led/status';
 
 void main() => runApp(const LedApp());
 
@@ -47,6 +49,7 @@ class _LedPageState extends State<LedPage> {
   bool _ledOn = false;
   bool _connected = false;
   bool _disposed = false;
+  bool _esp32Online = false;
   String _status = 'Łączenie...';
   String? _meshNodeId; // ID węzła mesh lub null jeśli brak
   Timer? _nodeCheckTimer;
@@ -107,6 +110,7 @@ class _LedPageState extends State<LedPage> {
     }
 
     _client.subscribe(topicState, MqttQos.atLeastOnce);
+    _client.subscribe(topicStatus, MqttQos.atLeastOnce);
     _client.updates?.listen(_onData);
   }
 
@@ -129,10 +133,12 @@ class _LedPageState extends State<LedPage> {
 
   void _onData(List<MqttReceivedMessage<MqttMessage>> messages) {
     for (final msg in messages) {
+      final payload = (msg.payload as MqttPublishMessage).payload.message;
+      final text = MqttPublishPayload.bytesToStringAsString(payload);
       if (msg.topic == topicState) {
-        final payload = (msg.payload as MqttPublishMessage).payload.message;
-        final text = MqttPublishPayload.bytesToStringAsString(payload);
         setState(() => _ledOn = text == 'ON');
+      } else if (msg.topic == topicStatus) {
+        setState(() => _esp32Online = text == 'online');
       }
     }
   }
@@ -205,8 +211,29 @@ class _LedPageState extends State<LedPage> {
                 fontSize: 13,
               ),
             ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _esp32Online ? Icons.memory : Icons.memory_outlined,
+                  size: 14,
+                  color: _esp32Online ? Colors.greenAccent : Colors.redAccent,
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  _esp32Online
+                      ? 'android-switch: online'
+                      : 'android-switch: brak połączenia',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: _esp32Online ? Colors.greenAccent : Colors.redAccent,
+                  ),
+                ),
+              ],
+            ),
             if (_meshNodeId != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

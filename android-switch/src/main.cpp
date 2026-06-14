@@ -2,6 +2,7 @@
 // Łączy się z WiFi i brokerem MQTT, nasłuchuje komend ON/OFF na topic mgil/esp32c3/led/command,
 // włącza/wyłącza LED i publikuje aktualny stan na mgil/esp32c3/led/state (retain).
 // Połączenie WiFi i MQTT jest automatycznie odtwarzane po zerwaniu.
+// Publikuje status online/offline przez MQTT LWT na topic mgil/esp32c3/led/status.
 // Wersja: 2026-06-14 23:55
 
 #include <Arduino.h>
@@ -47,8 +48,11 @@ void connectWifi() {
 void connectMqtt() {
     while (!mqtt.connected()) {
         Serial.print("MQTT...");
-        if (mqtt.connect(MQTT_CLIENT_ID)) {
+        // LWT: broker opublikuje "offline" gdy ESP32 zerwie połączenie
+        if (mqtt.connect(MQTT_CLIENT_ID, nullptr, nullptr,
+                         TOPIC_STATUS, 0, true, "offline")) {
             Serial.println("OK");
+            mqtt.publish(TOPIC_STATUS, "online", true);
             mqtt.subscribe(TOPIC_CMD);
             publishState();
         } else {
