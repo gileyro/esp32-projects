@@ -1,14 +1,15 @@
 #pragma once
-// Wersja: 2026-06-14 16:30
+// Wersja: 2026-06-14 20:04
 
-// Wspólne dla wszystkich węzłów mesh
-#define MESH_PREFIX     "esp32mesh"
+// ── Sieć mesh (wspólna dla wszystkich węzłów) ──────────────────────────────
+// Urządzenia końcowe (telefon, laptop) łączą się do tej sieci na dowolnym węźle.
+#define MESH_SSID       "esp32mesh"
 #define MESH_PASSWORD   "mesh_password"
-#define MESH_PORT       5555
 
-// Ustaw true TYLKO na węźle podłączonym do routera WiFi (węzeł root)
+// ── Tryb węzła ────────────────────────────────────────────────────────────
+// Ustaw true TYLKO na węźle podłączonym bezpośrednio do routera WiFi.
 #define IS_ROOT         false
 
-// Dane routera WiFi — wymagane tylko gdy IS_ROOT = true
+// ── Dane routera WiFi (tylko węzeł root, IS_ROOT = true) ──────────────────
 #define WIFI_SSID       "twoje_ssid"
 #define WIFI_PASSWORD   "twoje_haslo"
