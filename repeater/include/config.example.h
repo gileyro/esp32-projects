@@ -1,5 +1,5 @@
 #pragma once
-// Wersja: 2026-06-14
+// Wersja: 2026-06-14 16:30
 
 // Wspólne dla wszystkich węzłów mesh
 #define MESH_PREFIX     "esp32mesh"

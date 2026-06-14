@@ -3,7 +3,7 @@
 // Jeden węzeł (IS_ROOT=true w config.h) łączy się z routerem i daje
 // pozostałym węzłom dostęp do internetu przez mesh.
 // Wszystkie węzły co 5s rozgłaszają swoje ID przez sieć mesh.
-// Wersja: 2026-06-14
+// Wersja: 2026-06-14 16:30
 
 #include <Arduino.h>
 #include <painlessMesh.h>
