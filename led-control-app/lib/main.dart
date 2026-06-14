@@ -2,6 +2,8 @@
 // Łączy się z brokerem MQTT (broker.hivemq.com), wyświetla animowaną żarówkę
 // i przycisk Włącz/Wyłącz, który wysyła ON/OFF na topic esp32/led/command.
 // Stan UI synchronizowany jest z esp32/led/state. Kropka w AppBar pokazuje status połączenia.
+// Po utracie połączenia automatycznie ponawia próbę co 5 sekund.
+// Wersja: 2026-06-14 16:32
 
 import 'package:flutter/material.dart';
 import 'package:mqtt_client/mqtt_client.dart';
@@ -39,6 +41,7 @@ class _LedPageState extends State<LedPage> {
   late MqttServerClient _client;
   bool _ledOn = false;
   bool _connected = false;
+  bool _disposed = false;
   String _status = 'Łączenie...';
 
   @override
@@ -48,6 +51,9 @@ class _LedPageState extends State<LedPage> {
   }
 
   Future<void> _connect() async {
+    if (_disposed) return;
+    setState(() => _status = 'Łączenie...');
+
     final clientId = 'flutter-${DateTime.now().millisecondsSinceEpoch}';
     _client = MqttServerClient(mqttBroker, clientId)
       ..port = mqttPort
@@ -63,8 +69,10 @@ class _LedPageState extends State<LedPage> {
     try {
       await _client.connect();
     } catch (e) {
-      setState(() => _status = 'Błąd: $e');
+      if (_disposed) return;
+      setState(() => _status = 'Błąd połączenia – ponawiam za 5s...');
       _client.disconnect();
+      Future.delayed(const Duration(seconds: 5), _connect);
       return;
     }
 
@@ -78,11 +86,14 @@ class _LedPageState extends State<LedPage> {
         _status = 'Połączono z $mqttBroker';
       });
 
-  void _onDisconnected() =>
-      setState(() {
-        _connected = false;
-        _status = 'Rozłączono';
-      });
+  void _onDisconnected() {
+    if (_disposed) return;
+    setState(() {
+      _connected = false;
+      _status = 'Rozłączono – ponawiam za 5s...';
+    });
+    Future.delayed(const Duration(seconds: 5), _connect);
+  }
 
   void _onData(List<MqttReceivedMessage<MqttMessage>> messages) {
     for (final msg in messages) {
@@ -102,6 +113,7 @@ class _LedPageState extends State<LedPage> {
 
   @override
   void dispose() {
+    _disposed = true;
     _client.disconnect();
     super.dispose();
   }
