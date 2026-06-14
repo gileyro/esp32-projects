@@ -1,34 +1,28 @@
-// Firmware Seeed XIAO ESP32-C3: węzeł rozszerzający zasięg WiFi z NAT routingiem.
+// Firmware Seeed XIAO ESP32-C3: węzeł sieci mesh dla detekcji pozycji.
+//
+// WAŻNE: Ten firmware NIE przekazuje ruchu internetowego.
+// Urządzenia ESP32 (android-switch) łączą się bezpośrednio z domowym routerem WiFi.
+// Sieć mesh (MESH_SSID) służy wyłącznie temu, by aplikacja Flutter mogła wykryć,
+// do którego węzła jest podłączony telefon (GET /mesh-info → {"id":"XXXX","role":"root|relay"}).
 //
 // Topologia:
-//   [Router] ──── [Węzeł root] ──── [Węzeł relay 1] ──── [Węzeł relay 2] ...
+//   [Router WiFi] ─── [android-switch ESP32] (MQTT przez internet)
+//   [Węzeł root]  ─── [Węzeł relay 1] ─── [Węzeł relay 2] ...
+//    SSID: esp32mesh   SSID: esp32mesh     SSID: esp32mesh
 //
-// Węzeł root (IS_ROOT=true):
-//   - STA łączy się z domowym routerem WiFi
-//   - AP tworzy sieć MESH_SSID
-//   - NAT przekazuje ruch z AP do internetu przez STA
-//
-// Węzeł relay (IS_ROOT=false):
-//   - STA skanuje i łączy się z najsilniejszym sygnałem MESH_SSID
-//   - AP tworzy własną sieć MESH_SSID na unikalnej podsieci (z MAC)
-//   - NAT przekazuje ruch dalej w kierunku routera
-//   - Urządzenia końcowe łączą się do dowolnego węzła relay
-//
-// Każdy węzeł serwuje HTTP GET /mesh-info zwracające jego ID i rolę.
-// Aplikacja Flutter odpytuje gateway IP i wyświetla ID węzła.
-// Wersja: 2026-06-14 20:11
+// Każdy węzeł tworzy AP z MESH_SSID; telefon łączy się z najbliższym i pyta /mesh-info.
+// Wersja: 2026-06-14 23:10
 
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WebServer.h>
 #include <esp_wifi.h>
-#include "lwip/lwip_napt.h"
 #include "config.h"
 
 WebServer httpServer(80);
 String nodeId;
 
-// ID węzła: ostatnie 4 znaki MAC w hex (np. "A3F2")
+// ID węzła: ostatnie 4 znaki MAC AP w hex (np. "A3F2")
 static String buildNodeId() {
     uint8_t mac[6];
     esp_wifi_get_mac(WIFI_IF_AP, mac);
@@ -37,25 +31,13 @@ static String buildNodeId() {
     return String(buf);
 }
 
-// Unikalny trzeci oktet podsieci AP wyprowadzony z MAC (zakres 10–209)
-static uint8_t apSubnet() {
-    uint8_t mac[6];
-    esp_wifi_get_mac(WIFI_IF_AP, mac);
-    return mac[5] % 200 + 10;
-}
-
 static void startAP() {
-    uint8_t sub = IS_ROOT ? 4 : apSubnet();
-    IPAddress apIP(192, 168, sub, 1);
-    IPAddress apMask(255, 255, 255, 0);
-
-    WiFi.softAPConfig(apIP, apIP, apMask);
     WiFi.softAP(MESH_SSID, MESH_PASSWORD);
-
-    ip_napt_enable(apIP, 1);
-
-    Serial.printf("AP: %s  IP: %s  NodeID: %s\n",
-                  MESH_SSID, apIP.toString().c_str(), nodeId.c_str());
+    Serial.printf("AP: %s  IP: %s  ID: %s  rola: %s\n",
+                  MESH_SSID,
+                  WiFi.softAPIP().toString().c_str(),
+                  nodeId.c_str(),
+                  IS_ROOT ? "root" : "relay");
 }
 
 static void startHttpServer() {
@@ -65,67 +47,15 @@ static void startHttpServer() {
         httpServer.send(200, "application/json", json);
     });
     httpServer.begin();
-}
-
-static void connectRoot() {
-    Serial.printf("ROOT: łączenie z %s...\n", WIFI_SSID);
-    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-    while (WiFi.status() != WL_CONNECTED) {
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.printf("\nROOT: połączono, IP: %s\n", WiFi.localIP().toString().c_str());
-}
-
-static void connectRelay() {
-    Serial.println("RELAY: skanowanie sieci mesh...");
-
-    int best = -100, bestIdx = -1;
-    int n = WiFi.scanNetworks();
-    for (int i = 0; i < n; i++) {
-        if (WiFi.SSID(i) == MESH_SSID && WiFi.RSSI(i) > best) {
-            best = WiFi.RSSI(i);
-            bestIdx = i;
-        }
-    }
-    WiFi.scanDelete();
-
-    if (bestIdx < 0) {
-        Serial.println("RELAY: brak sieci mesh, ponawianie za 5s...");
-        delay(5000);
-        connectRelay();
-        return;
-    }
-
-    Serial.printf("RELAY: łączenie z %s (RSSI: %d dBm)...\n", MESH_SSID, best);
-    WiFi.begin(MESH_SSID, MESH_PASSWORD);
-    unsigned long t = millis();
-    while (WiFi.status() != WL_CONNECTED) {
-        if (millis() - t > 15000) {
-            Serial.println("RELAY: timeout, ponawianie...");
-            WiFi.disconnect();
-            delay(1000);
-            connectRelay();
-            return;
-        }
-        delay(500);
-        Serial.print(".");
-    }
-    Serial.printf("\nRELAY: połączono upstream, IP: %s\n", WiFi.localIP().toString().c_str());
+    Serial.println("HTTP: gotowy na /mesh-info");
 }
 
 void setup() {
     Serial.begin(115200);
-    WiFi.mode(WIFI_AP_STA);
+    WiFi.mode(WIFI_AP);
 
     nodeId = buildNodeId();
     Serial.printf("Node ID: %s\n", nodeId.c_str());
-
-#if IS_ROOT
-    connectRoot();
-#else
-    connectRelay();
-#endif
 
     startAP();
     startHttpServer();
@@ -134,14 +64,4 @@ void setup() {
 
 void loop() {
     httpServer.handleClient();
-
-    if (WiFi.status() != WL_CONNECTED) {
-        Serial.println("Połączenie utracone, ponawiam...");
-#if IS_ROOT
-        connectRoot();
-#else
-        connectRelay();
-#endif
-    }
-    delay(5000);
 }
