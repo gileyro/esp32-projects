@@ -1,4 +1,4 @@
-// Firmware ESP32-S3: sterowanie LED przez MQTT.
+// Firmware Seeed XIAO ESP32-C3: sterowanie zewnętrzną diodą LED przez MQTT.
 // Łączy się z WiFi i brokerem MQTT, nasłuchuje komend ON/OFF na topic esp32/led/command,
 // włącza/wyłącza LED i publikuje aktualny stan na esp32/led/state (retain).
 // Połączenie MQTT jest automatycznie odtwarzane po zerwaniu.
